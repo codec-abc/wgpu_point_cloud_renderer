@@ -11,3 +11,6 @@ winit = { version = "0.22.1" }
 wgpu = "0.6.0"
 wgpu-subscriber = "0.1.0"
 futures = { version = "0.3", default-features = false, features = ["std"] }
+bytemuck = { version = "1.4.1", features = ["derive"] }
+log = "0.4"
+# cgmath = "0.17"
