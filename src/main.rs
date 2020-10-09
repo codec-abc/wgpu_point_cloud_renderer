@@ -143,7 +143,20 @@ fn draw(
     queue.write_buffer(
         &uniform_buffer,
         0,
-        bytemuck::cast_slice(mx_ref),
+        //bytemuck::cast_slice(mx_ref),
+        // &[
+        //     0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
+        //     0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
+        //     0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,
+        //     0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,
+        // ]
+
+        &[
+            0, 0, 0x80, 0x3f,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
+            0, 0, 0, 0,    0, 0, 0x80, 0x3f,    0, 0, 0, 0,    0, 0, 0, 0,
+            0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0x80, 0x3f,    0, 0, 0, 0,
+            0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0x80, 0x3f,
+        ]
     );
 
     queue.submit(Some(encoder.finish()));
@@ -187,7 +200,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 visibility: wgpu::ShaderStage::VERTEX,
                 ty: wgpu::BindingType::UniformBuffer {
                     dynamic: false,
-                    min_binding_size: None,
+                    min_binding_size: wgpu::BufferSize::new(64),
                 },
                 count: None,
             }
@@ -195,12 +208,19 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         label: Some("uniform_bind_group_layout")
     });
 
-    let mx_total = get_matrix(1.0);
-    let mx_ref: &[f32; 16] = mx_total.as_ref();
+    //let mx_total = get_matrix(1.0);
+    //let mx_ref: &[f32; 16] = mx_total.as_ref();
     
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
-        contents: bytemuck::cast_slice(mx_ref),
+        contents: 
+            &[
+            0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
+            0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
+            0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,
+            0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,
+        ]
+        ,//bytemuck::cast_slice(mx_ref),
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
     });
 
