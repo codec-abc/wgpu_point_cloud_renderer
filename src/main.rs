@@ -6,7 +6,7 @@ use winit::{
 
 use bytemuck::{Pod, Zeroable};
 
-use wgpu::util::DeviceExt;
+use wgpu::{Buffer, Device, Queue, RenderPipeline, SwapChain, util::DeviceExt};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -15,7 +15,54 @@ struct Vertex {
     _color: [f32; 4],
 }
 
-async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::TextureFormat) {
+fn draw(
+    swap_chain: &mut SwapChain, 
+    device: &Device, 
+    render_pipeline: &RenderPipeline,
+    queue: &Queue,
+    vertex_data: &mut Vec<Vertex>,
+    vertex_buffer: &Buffer,
+) {
+    println!("redrawing");
+
+    let frame = swap_chain
+        .get_current_frame()
+        .expect("Failed to acquire next swap chain texture")
+        .output;
+
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+    {
+        let mut render_pass =
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: &frame.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: true,
+                    },
+                }],
+                depth_stencil_attachment: None,
+            });
+
+        render_pass.set_pipeline(&render_pipeline);
+        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+
+        let vertex_count = vertex_data.len() as u32;
+        render_pass.draw(0..vertex_count, 0..1);
+    }
+    
+
+    queue.submit(Some(encoder.finish()));
+}
+
+async fn run(
+    event_loop: EventLoop<()>, 
+    window: Window, 
+    swapchain_format: wgpu::TextureFormat
+) {
     let size = window.inner_size();
     let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
     let surface = unsafe { instance.create_surface(&window) };
@@ -42,8 +89,11 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         .expect("Failed to create device");
 
     // Load the shaders from disk
-    let vs_module = device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
-    let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
+    let vs_module = 
+        device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
+
+    let fs_module = 
+        device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
@@ -127,7 +177,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             usage: wgpu::BufferUsage::VERTEX,
         });
 
-        let vertex_count = vertex_data.len() as u32;
+        
         /////////////////////////////////////
 
         *control_flow = ControlFlow::Poll;
@@ -141,40 +191,36 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 sc_desc.height = size.height;
                 swap_chain = device.create_swap_chain(&surface, &sc_desc);
             }
-            Event::RedrawRequested(_) => {
-                let frame = swap_chain
-                    .get_current_frame()
-                    .expect("Failed to acquire next swap chain texture")
-                    .output;
 
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            Event::WindowEvent { event, .. } => match event    {
+                WindowEvent::KeyboardInput {
+                    ..
+                } => {
 
-                {
-                    let mut render_pass =
-                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                                attachment: &frame.view,
-                                resolve_target: None,
-                                ops: wgpu::Operations {
-                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                    store: true,
-                                },
-                            }],
-                            depth_stencil_attachment: None,
-                        });
-
-                    render_pass.set_pipeline(&render_pipeline);
-                    render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                    render_pass.draw(0..vertex_count, 0..1);
                 }
 
-                queue.submit(Some(encoder.finish()));
+                WindowEvent::MouseInput {
+                    ..
+                } => {
+                }
+
+                WindowEvent::CloseRequested => {
+                    *control_flow = ControlFlow::Exit
+                }
+                _ => {}
             }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
+
+            Event::RedrawRequested(_) => {
+               draw(
+                   &mut swap_chain, 
+                   &device, 
+                   &render_pipeline, 
+                   &queue, 
+                   &mut vertex_data, 
+                   &vertex_buffer
+                );
+            }
+
             _ => {}
         }
     });
