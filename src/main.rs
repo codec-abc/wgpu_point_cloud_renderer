@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use cgmath::*;
 
 use winit::{
@@ -19,9 +21,12 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
-    let translation = Vector3::new(0.0, 0.0, -10.0);
-    let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
+fn move_camera(cam_pos_x: f64, cam_pos_y: f64, position_x: f64, _position_y: f64) -> (f64, f64) {
+    (cam_pos_x + (position_x / 100000.0), cam_pos_y)
+}
+
+fn get_matrix(aspect_ratio: f64, cam_pos: (f64, f64)) -> Matrix4<f32> {
+    assert!(aspect_ratio > 0.0f64);
 
     let perspective : PerspectiveFov<f32> = PerspectiveFov::<f32> {
         fovy: Rad::<f32>::from(Deg::<f32>(90.0)),
@@ -31,11 +36,15 @@ fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
     };
 
     let projection_matrix = 
-        Matrix4::<f32>::from(perspective.to_perspective()) *
-        Matrix4::<f32>::from(rotation);
+        Matrix4::<f32>::from(perspective.to_perspective());
 
-    let transformation_matrix = 
-        Matrix4::from_translation(translation);
+    let distance = 3.0f32;
+
+    let transformation_matrix = Matrix4::look_at(
+        Point3::new((cam_pos.0 as f32).cos() * distance, 0.0 as f32, (cam_pos.0 as f32).sin() * distance),
+        Point3::new(0f32, 0.0, 0.0),
+        Vector3::unit_y(),
+    );
 
     OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
 }
@@ -47,10 +56,11 @@ struct Vertex {
     _color: [f32; 4],
 }
 
-fn alter_buffer(device: &Device, vertex_data: &mut Vec<Vertex>) -> wgpu::Buffer {
+fn alter_buffer(device: &Device, rc_ref_cell_vertex_data: Rc<RefCell<Vec<Vertex>>>) -> wgpu::Buffer {
+    let mut vertex_data = rc_ref_cell_vertex_data.borrow_mut();
     vertex_data.clear();
 
-    let max = 50;
+    let max = 20;
     let mut rng = rand::thread_rng();
 
     for _i in 0..max {
@@ -82,19 +92,19 @@ fn draw(
     device: &Device,
     render_pipeline: &RenderPipeline,
     queue: &Queue,
-    vertex_data: &mut Vec<Vertex>,
+    rc_refcell_vertex_data: Rc<RefCell<Vec<Vertex>>>,
     vertex_buffer: &Buffer,
     uniform_bind_group: &BindGroup,
     ratio: f64,
-    uniform_buffer: &Buffer
+    uniform_buffer: &Buffer,
+    cam_pos: (f64, f64)
 ) {
-    println!("redrawing");
 
+    let vertex_data = rc_refcell_vertex_data.borrow();
     let frame = swap_chain
         .get_current_frame()
         .expect("Failed to acquire next swap chain texture")
         .output;
-
 
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -118,7 +128,7 @@ fn draw(
 
         let vertex_count = vertex_data.len() as u32;
 
-        let mx_total = get_matrix(ratio);
+        let mx_total = get_matrix(ratio, cam_pos);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
 
         queue.write_buffer(
@@ -128,8 +138,6 @@ fn draw(
         );
 
         render_pass.draw(0..vertex_count, 0..1);
-
-        
     }
 
     queue.submit(Some(encoder.finish()));
@@ -181,7 +189,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         label: Some("uniform_bind_group_layout")
     });
 
-    let mx_total = get_matrix(1.0);
+    let (mut cam_pos_x, mut cam_pos_y) = (0.0f64, -4.0f64);
+
+    let mx_total = get_matrix(1.0, (cam_pos_x, cam_pos_y));
     let mx_ref: &[f32; 16] = mx_total.as_ref();
     
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -247,20 +257,10 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
     let mut swap_chain = device.create_swap_chain(&surface, &sc_desc);
     let mut ratio = 1.0f64;
 
-    event_loop.run(move |event, _, control_flow| {
-        // Have the closure take ownership of the resources.
-        // `event_loop.run` never returns, therefore we must do this to ensure
-        // the resources are properly cleaned up.
-        let _ = (
-            &instance,
-            &adapter,
-            &vs_module,
-            &fs_module,
-            &pipeline_layout,
-        );
-
-        ///////////////////////////////
-        let mut vertex_data = vec![];
+    ///////////////////////////////
+    let vertex_data: Rc<RefCell<Vec<Vertex>>> = 
+    {
+        let mut vertex_data_inner: Vec<Vertex> = vec![];
         let mut rng = rand::thread_rng();
         let max = 50;
         for i in 0..max {
@@ -273,19 +273,27 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     rng.gen_range(0.0, 1.0)
                 );
 
-            vertex_data.push(Vertex {
+                vertex_data_inner.push(Vertex {
                 _pos: [1.0 * cos, 1.0 * sin, 0.99],
                 _color: [r, g, b, 1.0],
             });
         }
 
-        let mut vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertex_data),
-            usage: wgpu::BufferUsage::VERTEX,
-        });
+        Rc::new(RefCell::new(vertex_data_inner))
+    };
 
-        /////////////////////////////////////
+    /////////////////////////////////////
+    event_loop.run(move |event, _, control_flow| {
+        // Have the closure take ownership of the resources.
+        // `event_loop.run` never returns, therefore we must do this to ensure
+        // the resources are properly cleaned up.
+        let _ = (
+            &instance,
+            &adapter,
+            &vs_module,
+            &fs_module,
+            &pipeline_layout,
+        );
 
         *control_flow = ControlFlow::Poll;
         match event {
@@ -305,20 +313,54 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
                 WindowEvent::MouseInput { button, .. } => {
                     if button == MouseButton::Right {
-                        vertex_buffer = alter_buffer(&device, &mut vertex_data);
+
+                        let vertex_buffer = alter_buffer(&device, vertex_data.clone());
 
                         draw(
                             &mut swap_chain,
                             &device,
                             &render_pipeline,
                             &queue,
-                            &mut vertex_data,
+                            vertex_data.clone(),
                             &vertex_buffer,
                             &uniform_bind_group,
                             ratio,
-                            &uniform_buffer
+                            &uniform_buffer,
+                            (cam_pos_x, cam_pos_y)
                         );
                     }
+                }
+
+                WindowEvent::CursorMoved {
+                    position,
+                    ..
+                } => {
+                    let (new_cam_pos_x, new_cam_pos_y) = 
+                        move_camera(cam_pos_x, cam_pos_y, position.x, position.y);
+
+                    cam_pos_x = new_cam_pos_x;
+                    cam_pos_y = new_cam_pos_y;
+
+                    let vertex_data_inner = vertex_data.borrow();
+
+                    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Vertex Buffer"),
+                        contents: bytemuck::cast_slice(&vertex_data_inner),
+                        usage: wgpu::BufferUsage::VERTEX,
+                    });
+
+                    draw(
+                        &mut swap_chain,
+                        &device,
+                        &render_pipeline,
+                        &queue,
+                        vertex_data.clone(),
+                        &vertex_buffer,
+                        &uniform_bind_group,
+                        ratio,
+                        &uniform_buffer,
+                        (cam_pos_x, cam_pos_y)
+                    );
                 }
 
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -326,16 +368,26 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             },
 
             Event::RedrawRequested(_) => {
+
+                let vertex_data_inner = vertex_data.borrow();
+
+                let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&vertex_data_inner),
+                    usage: wgpu::BufferUsage::VERTEX,
+                });            
+
                 draw(
                     &mut swap_chain,
                     &device,
                     &render_pipeline,
                     &queue,
-                    &mut vertex_data,
+                    vertex_data.clone(),
                     &vertex_buffer,
                     &uniform_bind_group,
                     ratio,
-                    &uniform_buffer
+                    &uniform_buffer,
+                    (cam_pos_x, cam_pos_y)
                 );
             }
 
