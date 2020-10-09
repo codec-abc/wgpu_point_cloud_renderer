@@ -155,7 +155,7 @@ fn draw(
     }
 
     queue.submit(Some(encoder.finish()));
-}
+}   
 
 async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::TextureFormat) {
     let size = window.inner_size();
