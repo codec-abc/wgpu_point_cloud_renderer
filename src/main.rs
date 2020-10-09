@@ -109,7 +109,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         for i in 0..max {
             let percent = i as f32 / max as f32;
             let (sin, cos) = (percent * 2.0 * std::f32::consts::PI).sin_cos();
-            
+
             vertex_data.push(Vertex {
                 _pos: [0.0, 0.0],
                 _color: [1.0, -sin, cos, 1.0],
@@ -151,21 +151,22 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
                 {
-                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                            attachment: &frame.view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                store: true,
-                            },
-                        }],
-                        depth_stencil_attachment: None,
-                    });
+                    let mut render_pass =
+                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                                attachment: &frame.view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                    store: true,
+                                },
+                            }],
+                            depth_stencil_attachment: None,
+                        });
 
-                    rpass.set_pipeline(&render_pipeline);
-                    rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                    rpass.draw(0..vertex_count, 0..1);
+                    render_pass.set_pipeline(&render_pipeline);
+                    render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                    render_pass.draw(0..vertex_count, 0..1);
                 }
 
                 queue.submit(Some(encoder.finish()));
