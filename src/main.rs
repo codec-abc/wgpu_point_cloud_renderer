@@ -19,20 +19,15 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-// fn get_matrix(aspect_ratio: f64) -> Vector4<f32> {
-
-//     Vector4::<f32>::new(0.0, 1.0, 0.0, 1.0)
-// }
-
 fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
-    let translation = Vector3::new(0.0, 0.0, 0.0);
+    let translation = Vector3::new(0.0, 0.0, -10.0);
     let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
 
     let perspective : PerspectiveFov<f32> = PerspectiveFov::<f32> {
         fovy: Rad::<f32>::from(Deg::<f32>(90.0)),
         aspect: aspect_ratio as f32,
         near: 0.01,
-        far: 100.0,
+        far: 1000.0,
     };
 
     let projection_matrix = 
@@ -42,23 +37,7 @@ fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
     let transformation_matrix = 
         Matrix4::from_translation(translation);
 
-    // OPENGL_TO_WGPU_MATRIX *
-    let mut result = 
-        Matrix4::<f32>::from_translation(
-            Vector3::<f32>::new(0.0, 0.0, 0.0));
-
-    result
-
-    //println!("{:?}", result);
-    //OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
-
-                                                    //c0 ??
-    // Matrix4::<f32>::new(
-    //     1.0, 0.0, 0.0, 1.0, //c1
-    //     0.0, 1.0, 0.0, 1.0, //c2
-    //     0.0, 0.0, 1.0, 1.0, //c3
-    //     1.0, 1.0, 1.0, 1.0  //c4 ???
-    // )
+    OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
 }
 
 #[repr(C)]
