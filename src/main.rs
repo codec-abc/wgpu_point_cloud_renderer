@@ -11,7 +11,7 @@ use wgpu::util::DeviceExt;
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Vertex {
-    _pos: [f32; 2],
+    _pos: [f32; 3],
     _color: [f32; 4],
 }
 
@@ -111,12 +111,12 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             let (sin, cos) = (percent * 2.0 * std::f32::consts::PI).sin_cos();
 
             vertex_data.push(Vertex {
-                _pos: [0.0, 0.0],
+                _pos: [0.0, 0.0, 0.0],
                 _color: [1.0, -sin, cos, 1.0],
             });
 
             vertex_data.push(Vertex {
-                _pos: [1.0 * cos, 1.0 * sin],
+                _pos: [1.0 * cos, 1.0 * sin, 0.0],
                 _color: [sin, -cos, 1.0, 1.0],
             });
         }
