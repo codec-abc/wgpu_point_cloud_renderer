@@ -5,15 +5,15 @@ layout(location = 1) in vec4 a_Color;
 
 layout(location = 0) out vec4 f_Color;
 
-layout(set=0, binding=0) // 1.
+layout(set=0, binding=0)
 uniform Uniforms {
-    //mat4 u_view_proj; // 2.
-    vec4 uniform_color;
+    
+    mat4x4 u_view_proj;
 };
 
-
 void main() {
-    f_Color = uniform_color;//a_Color;
-    mat4 matrix = mat4(1.0);
+    vec4 column = u_view_proj[3];
+    f_Color = a_Color;
+    mat4x4 matrix = mat4x4(1.0);
     gl_Position = matrix * vec4(a_Pos, 1.0);
 }

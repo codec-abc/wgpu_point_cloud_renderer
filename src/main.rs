@@ -19,41 +19,47 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-fn get_matrix(aspect_ratio: f64) -> Vector4<f32> {
+// fn get_matrix(aspect_ratio: f64) -> Vector4<f32> {
 
-    Vector4::<f32>::new(1.0, 0.0, 0.0, 1.0)
-}
-
-// fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
-//     let translation = Vector3::new(0.0, 0.0, 0.0);
-//     let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
-
-//     let perspective : PerspectiveFov<f32> = PerspectiveFov::<f32> {
-//         fovy: Rad::<f32>::from(Deg::<f32>(90.0)),
-//         aspect: aspect_ratio as f32,
-//         near: 0.01,
-//         far: 100.0,
-//     };
-
-//     let projection_matrix = 
-//         Matrix4::<f32>::from(perspective.to_perspective()) *
-//         Matrix4::<f32>::from(rotation);
-
-//     let transformation_matrix = 
-//         Matrix4::from_translation(translation);
-
-//     // OPENGL_TO_WGPU_MATRIX *
-//     let mut result = 
-//         Matrix4::<f32>::from_translation(
-//         Vector3::<f32>::new(0.0, 0.0, 0.0));
-
-//     //result = result.transpose();
-
-//     result
-
-//     //println!("{:?}", result);
-//     //OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
+//     Vector4::<f32>::new(0.0, 1.0, 0.0, 1.0)
 // }
+
+fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
+    let translation = Vector3::new(0.0, 0.0, 0.0);
+    let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
+
+    let perspective : PerspectiveFov<f32> = PerspectiveFov::<f32> {
+        fovy: Rad::<f32>::from(Deg::<f32>(90.0)),
+        aspect: aspect_ratio as f32,
+        near: 0.01,
+        far: 100.0,
+    };
+
+    let projection_matrix = 
+        Matrix4::<f32>::from(perspective.to_perspective()) *
+        Matrix4::<f32>::from(rotation);
+
+    let transformation_matrix = 
+        Matrix4::from_translation(translation);
+
+    // OPENGL_TO_WGPU_MATRIX *
+    let mut result = 
+        Matrix4::<f32>::from_translation(
+            Vector3::<f32>::new(0.0, 0.0, 0.0));
+
+    result
+
+    //println!("{:?}", result);
+    //OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
+
+                                                    //c0 ??
+    // Matrix4::<f32>::new(
+    //     1.0, 0.0, 0.0, 1.0, //c1
+    //     0.0, 1.0, 0.0, 1.0, //c2
+    //     0.0, 0.0, 1.0, 1.0, //c3
+    //     1.0, 1.0, 1.0, 1.0  //c4 ???
+    // )
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -134,8 +140,8 @@ fn draw(
         let vertex_count = vertex_data.len() as u32;
 
         let mx_total = get_matrix(ratio);
-        //let mx_ref: &[f32; 16] = mx_total.as_ref();
-        let mx_ref: &[f32; 4] = mx_total.as_ref();
+        let mx_ref: &[f32; 16] = mx_total.as_ref();
+        //let mx_ref: &[f32; 4] = mx_total.as_ref();
 
         println!("====");
         println!("{:?}", mx_total);
@@ -204,9 +210,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
     });
 
     let mx_total = get_matrix(1.0);
-    //let mx_ref: &[f32; 16] = mx_total.as_ref();
+    let mx_ref: &[f32; 16] = mx_total.as_ref();
 
-    let mx_ref: &[f32; 4] = mx_total.as_ref();
+    //let mx_ref: &[f32; 4] = mx_total.as_ref();
     
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
@@ -285,15 +291,21 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
         ///////////////////////////////
         let mut vertex_data = vec![];
-
+        let mut rng = rand::thread_rng();
         let max = 50;
         for i in 0..max {
             let percent = i as f32 / max as f32;
             let (sin, cos) = (percent * 2.0 * std::f32::consts::PI).sin_cos();
+            let (r, g, b) = 
+                (
+                    rng.gen_range(0.0, 1.0),
+                    rng.gen_range(0.0, 1.0),
+                    rng.gen_range(0.0, 1.0)
+                );
 
             vertex_data.push(Vertex {
                 _pos: [1.0 * cos, 1.0 * sin, 0.99],
-                _color: [sin, -cos, 1.0, 1.0],
+                _color: [r, g, b, 1.0],
             });
         }
 
