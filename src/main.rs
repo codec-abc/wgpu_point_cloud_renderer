@@ -133,24 +133,26 @@ fn draw(
 
         let vertex_count = vertex_data.len() as u32;
 
+        let mx_total = get_matrix(ratio);
+        //let mx_ref: &[f32; 16] = mx_total.as_ref();
+        let mx_ref: &[f32; 4] = mx_total.as_ref();
+
+        println!("====");
+        println!("{:?}", mx_total);
+        println!("{:?}", mx_ref);
+        println!("====");
+        println!(" ");
+
+        queue.write_buffer(
+            &uniform_buffer,
+            0,
+            bytemuck::cast_slice(mx_ref)
+        );
+
         render_pass.draw(0..vertex_count, 0..1);
+
+        
     }
-
-    let mx_total = get_matrix(ratio);
-    //let mx_ref: &[f32; 16] = mx_total.as_ref();
-    let mx_ref: &[f32; 4] = mx_total.as_ref();
-
-    println!("====");
-    println!("{:?}", mx_total);
-    println!("{:?}", mx_ref);
-    println!("====");
-    println!(" ");
-
-    queue.write_buffer(
-        &uniform_buffer,
-        0,
-        bytemuck::cast_slice(mx_ref)
-    );
 
     queue.submit(Some(encoder.finish()));
 }
