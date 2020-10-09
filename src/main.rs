@@ -1,5 +1,3 @@
-use std::ops::{Bound, RangeBounds};
-
 use cgmath::*;
 
 use winit::{
@@ -12,40 +10,41 @@ use rand::Rng;
 
 use bytemuck::{Pod, Zeroable};
 
-use wgpu::{BindGroup, BindingResource, Buffer, BufferAddress, Device, Queue, RenderPipeline, SwapChain, util::DeviceExt};
+use wgpu::{BindGroup, BindingResource, Buffer, Device, Queue, RenderPipeline, SwapChain, util::DeviceExt};
 
-pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f64> = Matrix4::new(
+pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 0.5, 0.0,
     0.0, 0.0, 0.5, 1.0,
 );
 
-fn get_matrix(aspect: f64) -> cgmath::Matrix4<f64> {
+fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
     let translation = Vector3::new(0.0, 0.0, 0.0);
     let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
 
-    let perspective : PerspectiveFov<f64> = PerspectiveFov::<f64> {
-        fovy: Rad::<f64>::from(Deg::<f64>(90.0)),
-        aspect: aspect,
+    let perspective : PerspectiveFov<f32> = PerspectiveFov::<f32> {
+        fovy: Rad::<f32>::from(Deg::<f32>(90.0)),
+        aspect: aspect_ratio as f32,
         near: 0.01,
         far: 100.0,
     };
 
     let projection_matrix = 
-        Matrix4::<f64>::from(perspective.to_perspective()) *
-        Matrix4::<f64>::from(rotation);
+        Matrix4::<f32>::from(perspective.to_perspective()) *
+        Matrix4::<f32>::from(rotation);
 
     let transformation_matrix = 
         Matrix4::from_translation(translation);
 
-    OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
+    //OPENGL_TO_WGPU_MATRIX * 
+        Matrix4::<f32>::from_translation(Vector3::<f32>::new(0.0, 0.0, 0.0)) // * projection_matrix * transformation_matrix
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Vertex {
-    _pos: [f32; 3],
+    _pos: [f32; 4],
     _color: [f32; 4],
 }
 
@@ -63,7 +62,7 @@ fn alter_buffer(device: &Device, vertex_data: &mut Vec<Vertex>) -> wgpu::Buffer 
         let color_2 = rng.gen_range(0.0, 1.0);
 
         vertex_data.push(Vertex {
-            _pos: [x, y, 0.0],
+            _pos: [x, y, 0.0, 1.0],
             _color: [1.0, color_1, color_2, 1.0],
         });
     }
@@ -77,35 +76,6 @@ fn alter_buffer(device: &Device, vertex_data: &mut Vec<Vertex>) -> wgpu::Buffer 
     vertex_buffer
 }
 
-struct FakeRange {}
-
-impl RangeBounds<BufferAddress> for FakeRange {
-    fn contains<U>(&self, item: &U) -> bool
-    where
-        BufferAddress: PartialOrd<U>,
-        U: ?Sized + PartialOrd<BufferAddress>,
-    {
-        (match self.start_bound() {
-            std::ops::Bound::Included(ref start) => *start <= item,
-            std::ops::Bound::Excluded(ref start) => *start < item,
-            std::ops::Bound::Unbounded => true,
-        }) && (match self.end_bound() {
-            std::ops::Bound::Included(ref end) => item <= *end,
-            std::ops::Bound::Excluded(ref end) => item < *end,
-            std::ops::Bound::Unbounded => true,
-        })
-    }
-
-    fn start_bound(&self) -> std::ops::Bound<&BufferAddress> {
-        Bound::Unbounded
-    }
-
-    fn end_bound(&self) -> std::ops::Bound<&BufferAddress> {
-        Bound::Unbounded
-    }
-}
-
-
 fn draw(
     swap_chain: &mut SwapChain,
     device: &Device,
@@ -113,7 +83,7 @@ fn draw(
     queue: &Queue,
     vertex_data: &mut Vec<Vertex>,
     vertex_buffer: &Buffer,
-    bind_group: &BindGroup,
+    uniform_bind_group: &BindGroup,
     ratio: f64,
     uniform_buf: &Buffer
 ) {
@@ -142,14 +112,19 @@ fn draw(
         });
 
         render_pass.set_pipeline(&render_pipeline);
-        render_pass.set_bind_group(0, &bind_group, &[]);
+        render_pass.set_bind_group(0, &uniform_bind_group, &[]);
         render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
 
         let vertex_count = vertex_data.len() as u32;
 
         let mx_total = get_matrix(ratio);
-        let mx_ref: &[f64; 16] = mx_total.as_ref();
-        queue.write_buffer(&uniform_buf, 0, bytemuck::cast_slice(mx_ref));
+        let mx_ref: &[f32; 16] = mx_total.as_ref();
+
+        queue.write_buffer(
+            &uniform_buf,
+            0,
+            bytemuck::cast_slice(mx_ref),
+        );
 
         render_pass.draw(0..vertex_count, 0..1);
     }
@@ -204,7 +179,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
     });
 
     let mx_total = get_matrix(1.0);
-    let mx_ref: &[f64; 16] = mx_total.as_ref();
+    let mx_ref: &[f32; 16] = mx_total.as_ref();
     
     let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
@@ -217,7 +192,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: BindingResource::Buffer(uniform_buf.slice(FakeRange {}))
+                resource: BindingResource::Buffer(uniform_buf.slice(..))
             },
         ],
         label: None,
@@ -250,7 +225,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             vertex_buffers: &[wgpu::VertexBufferDescriptor {
                 stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
                 step_mode: wgpu::InputStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float2, 1 => Float4],
+                attributes: &wgpu::vertex_attr_array![0 => Float4, 1 => Float4],
             }],
         },
         sample_count: 1,
@@ -290,12 +265,12 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             let (sin, cos) = (percent * 2.0 * std::f32::consts::PI).sin_cos();
 
             vertex_data.push(Vertex {
-                _pos: [0.0, 0.0, 0.0],
+                _pos: [0.0, 0.0, 0.0, 1.0],
                 _color: [1.0, -sin, cos, 1.0],
             });
 
             vertex_data.push(Vertex {
-                _pos: [1.0 * cos, 1.0 * sin, 0.0],
+                _pos: [1.0 * cos, 1.0 * sin, 0.0, 1.0],
                 _color: [sin, -cos, 1.0, 1.0],
             });
         }
