@@ -1,12 +1,14 @@
 use winit::{
-    event::{Event, WindowEvent},
+    event::{Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
 
+use rand::Rng;
+
 use bytemuck::{Pod, Zeroable};
 
-use wgpu::{Buffer, Device, Queue, RenderPipeline, SwapChain, util::DeviceExt};
+use wgpu::{util::DeviceExt, Buffer, Device, Queue, RenderPipeline, SwapChain};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -15,9 +17,37 @@ struct Vertex {
     _color: [f32; 4],
 }
 
+fn alter_buffer(device: &Device, vertex_data: &mut Vec<Vertex>) -> wgpu::Buffer {
+    vertex_data.clear();
+
+    let max = 50;
+    let mut rng = rand::thread_rng();
+
+    for _i in 0..max {
+        let x = rng.gen_range(-1.0, 1.0);
+        let y = rng.gen_range(-1.0, 1.0);
+
+        let color_1 = rng.gen_range(0.0, 1.0);
+        let color_2 = rng.gen_range(0.0, 1.0);
+
+        vertex_data.push(Vertex {
+            _pos: [x, y, 0.0],
+            _color: [1.0, color_1, color_2, 1.0],
+        });
+    }
+
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Vertex Buffer"),
+        contents: bytemuck::cast_slice(&vertex_data),
+        usage: wgpu::BufferUsage::VERTEX,
+    });
+
+    vertex_buffer
+}
+
 fn draw(
-    swap_chain: &mut SwapChain, 
-    device: &Device, 
+    swap_chain: &mut SwapChain,
+    device: &Device,
     render_pipeline: &RenderPipeline,
     queue: &Queue,
     vertex_data: &mut Vec<Vertex>,
@@ -34,18 +64,17 @@ fn draw(
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
     {
-        let mut render_pass =
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: &frame.view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: true,
-                    },
-                }],
-                depth_stencil_attachment: None,
-            });
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: &frame.view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: true,
+                },
+            }],
+            depth_stencil_attachment: None,
+        });
 
         render_pass.set_pipeline(&render_pipeline);
         render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
@@ -53,16 +82,11 @@ fn draw(
         let vertex_count = vertex_data.len() as u32;
         render_pass.draw(0..vertex_count, 0..1);
     }
-    
 
     queue.submit(Some(encoder.finish()));
 }
 
-async fn run(
-    event_loop: EventLoop<()>, 
-    window: Window, 
-    swapchain_format: wgpu::TextureFormat
-) {
+async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::TextureFormat) {
     let size = window.inner_size();
     let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
     let surface = unsafe { instance.create_surface(&window) };
@@ -89,11 +113,9 @@ async fn run(
         .expect("Failed to create device");
 
     // Load the shaders from disk
-    let vs_module = 
-        device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
+    let vs_module = device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
 
-    let fs_module = 
-        device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
+    let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
@@ -171,13 +193,12 @@ async fn run(
             });
         }
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let mut vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&vertex_data),
             usage: wgpu::BufferUsage::VERTEX,
         });
 
-        
         /////////////////////////////////////
 
         *control_flow = ControlFlow::Poll;
@@ -192,32 +213,36 @@ async fn run(
                 swap_chain = device.create_swap_chain(&surface, &sc_desc);
             }
 
-            Event::WindowEvent { event, .. } => match event    {
-                WindowEvent::KeyboardInput {
-                    ..
-                } => {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::KeyboardInput { .. } => {}
 
+                WindowEvent::MouseInput { button, .. } => {
+                    if button == MouseButton::Right {
+                        vertex_buffer = alter_buffer(&device, &mut vertex_data);
+
+                        draw(
+                            &mut swap_chain,
+                            &device,
+                            &render_pipeline,
+                            &queue,
+                            &mut vertex_data,
+                            &vertex_buffer,
+                        );
+                    }
                 }
 
-                WindowEvent::MouseInput {
-                    ..
-                } => {
-                }
-
-                WindowEvent::CloseRequested => {
-                    *control_flow = ControlFlow::Exit
-                }
+                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 _ => {}
-            }
+            },
 
             Event::RedrawRequested(_) => {
-               draw(
-                   &mut swap_chain, 
-                   &device, 
-                   &render_pipeline, 
-                   &queue, 
-                   &mut vertex_data, 
-                   &vertex_buffer
+                draw(
+                    &mut swap_chain,
+                    &device,
+                    &render_pipeline,
+                    &queue,
+                    &mut vertex_data,
+                    &vertex_buffer,
                 );
             }
 
