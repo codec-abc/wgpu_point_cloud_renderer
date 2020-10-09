@@ -19,36 +19,41 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
-    let translation = Vector3::new(0.0, 0.0, 0.0);
-    let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
+fn get_matrix(aspect_ratio: f64) -> Vector4<f32> {
 
-    let perspective : PerspectiveFov<f32> = PerspectiveFov::<f32> {
-        fovy: Rad::<f32>::from(Deg::<f32>(90.0)),
-        aspect: aspect_ratio as f32,
-        near: 0.01,
-        far: 100.0,
-    };
-
-    let projection_matrix = 
-        Matrix4::<f32>::from(perspective.to_perspective()) *
-        Matrix4::<f32>::from(rotation);
-
-    let transformation_matrix = 
-        Matrix4::from_translation(translation);
-
-    // OPENGL_TO_WGPU_MATRIX *
-    let mut result = 
-        Matrix4::<f32>::from_translation(
-        Vector3::<f32>::new(0.0, 0.0, 0.0));
-
-    //result = result.transpose();
-
-    result
-
-    //println!("{:?}", result);
-    //OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
+    Vector4::<f32>::new(1.0, 0.0, 0.0, 1.0)
 }
+
+// fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
+//     let translation = Vector3::new(0.0, 0.0, 0.0);
+//     let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
+
+//     let perspective : PerspectiveFov<f32> = PerspectiveFov::<f32> {
+//         fovy: Rad::<f32>::from(Deg::<f32>(90.0)),
+//         aspect: aspect_ratio as f32,
+//         near: 0.01,
+//         far: 100.0,
+//     };
+
+//     let projection_matrix = 
+//         Matrix4::<f32>::from(perspective.to_perspective()) *
+//         Matrix4::<f32>::from(rotation);
+
+//     let transformation_matrix = 
+//         Matrix4::from_translation(translation);
+
+//     // OPENGL_TO_WGPU_MATRIX *
+//     let mut result = 
+//         Matrix4::<f32>::from_translation(
+//         Vector3::<f32>::new(0.0, 0.0, 0.0));
+
+//     //result = result.transpose();
+
+//     result
+
+//     //println!("{:?}", result);
+//     //OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
+// }
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -132,7 +137,8 @@ fn draw(
     }
 
     let mx_total = get_matrix(ratio);
-    let mx_ref: &[f32; 16] = mx_total.as_ref();
+    //let mx_ref: &[f32; 16] = mx_total.as_ref();
+    let mx_ref: &[f32; 4] = mx_total.as_ref();
 
     println!("====");
     println!("{:?}", mx_total);
@@ -143,20 +149,7 @@ fn draw(
     queue.write_buffer(
         &uniform_buffer,
         0,
-        //bytemuck::cast_slice(mx_ref),
-        // &[
-        //     0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
-        //     0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
-        //     0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,
-        //     0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,
-        // ]
-
-        &[
-            0, 0, 0x80, 0x3f,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
-            0, 0, 0, 0,    0, 0, 0x80, 0x3f,    0, 0, 0, 0,    0, 0, 0, 0,
-            0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0x80, 0x3f,    0, 0, 0, 0,
-            0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0x80, 0x3f,
-        ]
+        bytemuck::cast_slice(mx_ref)
     );
 
     queue.submit(Some(encoder.finish()));
@@ -200,7 +193,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 visibility: wgpu::ShaderStage::VERTEX,
                 ty: wgpu::BindingType::UniformBuffer {
                     dynamic: false,
-                    min_binding_size: wgpu::BufferSize::new(64),
+                    min_binding_size: None,
                 },
                 count: None,
             }
@@ -208,19 +201,14 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         label: Some("uniform_bind_group_layout")
     });
 
-    //let mx_total = get_matrix(1.0);
+    let mx_total = get_matrix(1.0);
     //let mx_ref: &[f32; 16] = mx_total.as_ref();
+
+    let mx_ref: &[f32; 4] = mx_total.as_ref();
     
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
-        contents: 
-            &[
-            0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
-            0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,
-            0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,    0, 0, 0, 0,
-            0, 0, 0, 0,    0, 0, 0, 0,    0, 0, 0, 0,    0x3f, 0x80, 0, 0,
-        ]
-        ,//bytemuck::cast_slice(mx_ref),
+        contents: bytemuck::cast_slice(mx_ref),
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
     });
 
