@@ -1,3 +1,5 @@
+use std::ops::{Bound, RangeBounds};
+
 use cgmath::*;
 
 use winit::{
@@ -10,8 +12,14 @@ use rand::Rng;
 
 use bytemuck::{Pod, Zeroable};
 
-use wgpu::{util::DeviceExt, Buffer, Device, Queue, RenderPipeline, SwapChain};
+use wgpu::{BindGroup, BindingResource, Buffer, BufferAddress, BufferSlice, Device, Queue, RenderPipeline, SwapChain, util::DeviceExt};
 
+pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f64> = Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.0,
+    0.0, 0.0, 0.5, 1.0,
+);
 
 fn get_matrix(aspect: f64) -> cgmath::Matrix4<f64> {
     let translation = Vector3::new(0.0, 0.0, 0.0);
@@ -31,7 +39,7 @@ fn get_matrix(aspect: f64) -> cgmath::Matrix4<f64> {
     let transformation_matrix = 
         Matrix4::from_translation(translation);
 
-    transformation_matrix * projection_matrix
+    OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
 }
 
 #[repr(C)]
@@ -69,6 +77,35 @@ fn alter_buffer(device: &Device, vertex_data: &mut Vec<Vertex>) -> wgpu::Buffer 
     vertex_buffer
 }
 
+struct FakeRange {}
+
+impl RangeBounds<BufferAddress> for FakeRange {
+    fn contains<U>(&self, item: &U) -> bool
+    where
+        BufferAddress: PartialOrd<U>,
+        U: ?Sized + PartialOrd<BufferAddress>,
+    {
+        (match self.start_bound() {
+            std::ops::Bound::Included(ref start) => *start <= item,
+            std::ops::Bound::Excluded(ref start) => *start < item,
+            Unbounded => true,
+        }) && (match self.end_bound() {
+            std::ops::Bound::Included(ref end) => item <= *end,
+            std::ops::Bound::Excluded(ref end) => item < *end,
+            Unbounded => true,
+        })
+    }
+
+    fn start_bound(&self) -> std::ops::Bound<&BufferAddress> {
+        Bound::Unbounded
+    }
+
+    fn end_bound(&self) -> std::ops::Bound<&BufferAddress> {
+        Bound::Unbounded
+    }
+}
+
+
 fn draw(
     swap_chain: &mut SwapChain,
     device: &Device,
@@ -76,6 +113,7 @@ fn draw(
     queue: &Queue,
     vertex_data: &mut Vec<Vertex>,
     vertex_buffer: &Buffer,
+    bind_group: &BindGroup,
 ) {
     println!("redrawing");
 
@@ -83,6 +121,7 @@ fn draw(
         .get_current_frame()
         .expect("Failed to acquire next swap chain texture")
         .output;
+
 
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -101,6 +140,7 @@ fn draw(
         });
 
         render_pass.set_pipeline(&render_pipeline);
+        render_pass.set_bind_group(0, &bind_group, &[]);
         render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
 
         let vertex_count = vertex_data.len() as u32;
@@ -141,9 +181,44 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
     let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
 
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStage::VERTEX,
+                ty: wgpu::BindingType::UniformBuffer {
+                    dynamic: false,
+                    min_binding_size: wgpu::BufferSize::new(64),
+                },
+                count: None,
+            }
+        ],
+    });
+
+    let mx_total = get_matrix(1.0);
+    let mx_ref: &[f64; 16] = mx_total.as_ref();
+    
+    let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Uniform Buffer"),
+        contents: bytemuck::cast_slice(mx_ref),
+        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: BindingResource::Buffer(uniform_buf.slice(FakeRange {}))
+            },
+        ],
+        label: None,
+    });
+
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
-        bind_group_layouts: &[],
+        bind_group_layouts: &[&bind_group_layout],
         push_constant_ranges: &[],
     });
 
@@ -185,6 +260,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
     };
 
     let mut swap_chain = device.create_swap_chain(&surface, &sc_desc);
+    let mut ratio = 1.0f64;
 
     event_loop.run(move |event, _, control_flow| {
         // Have the closure take ownership of the resources.
@@ -234,6 +310,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 // Recreate the swap chain with the new size
                 sc_desc.width = size.width;
                 sc_desc.height = size.height;
+                ratio = (size.width as f64) / (size.height as f64);
                 swap_chain = device.create_swap_chain(&surface, &sc_desc);
             }
 
@@ -251,6 +328,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                             &queue,
                             &mut vertex_data,
                             &vertex_buffer,
+                            &bind_group,
                         );
                     }
                 }
@@ -267,6 +345,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     &queue,
                     &mut vertex_data,
                     &vertex_buffer,
+                    &bind_group
                 );
             }
 
