@@ -120,13 +120,6 @@ fn draw(
 
         let mx_total = get_matrix(ratio);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
-        //let mx_ref: &[f32; 4] = mx_total.as_ref();
-
-        println!("====");
-        println!("{:?}", mx_total);
-        println!("{:?}", mx_ref);
-        println!("====");
-        println!(" ");
 
         queue.write_buffer(
             &uniform_buffer,
@@ -190,8 +183,6 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
     let mx_total = get_matrix(1.0);
     let mx_ref: &[f32; 16] = mx_total.as_ref();
-
-    //let mx_ref: &[f32; 4] = mx_total.as_ref();
     
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
