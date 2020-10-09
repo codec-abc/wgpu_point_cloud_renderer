@@ -26,7 +26,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             compatible_surface: Some(&surface),
         })
         .await
-        .expect("Failed to find an appropiate adapter");
+        .expect("Failed to find an appropriate adapter");
 
     // Create the logical device and command queue
     let (device, queue) = adapter
@@ -103,17 +103,18 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         );
 
         ///////////////////////////////
-
         let mut vertex_data = vec![];
 
         let max = 50;
         for i in 0..max {
             let percent = i as f32 / max as f32;
             let (sin, cos) = (percent * 2.0 * std::f32::consts::PI).sin_cos();
+            
             vertex_data.push(Vertex {
                 _pos: [0.0, 0.0],
                 _color: [1.0, -sin, cos, 1.0],
             });
+
             vertex_data.push(Vertex {
                 _pos: [1.0 * cos, 1.0 * sin],
                 _color: [sin, -cos, 1.0, 1.0],
@@ -125,7 +126,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             contents: bytemuck::cast_slice(&vertex_data),
             usage: wgpu::BufferUsage::VERTEX,
         });
-        
+
         let vertex_count = vertex_data.len() as u32;
         /////////////////////////////////////
 
@@ -146,19 +147,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     .expect("Failed to acquire next swap chain texture")
                     .output;
 
-
-                
-
-            let mut encoder =
+                let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-            // let mut encoder2 =
-            //     device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
-            //         label: None,
-            //         color_formats: &[sc_desc.format],
-            //         depth_stencil_format: None,
-            //         sample_count,
-            //     });
                 {
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
@@ -173,15 +164,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     });
 
                     rpass.set_pipeline(&render_pipeline);
-                    
-
-                    
-
-                    //encoder.set_vertex_buffer(0, vertex_buffer.slice(..));
-
                     rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                    ///////////////////////////////////////////////////
-
                     rpass.draw(0..vertex_count, 0..1);
                 }
 
@@ -199,26 +182,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 fn main() {
     let event_loop = EventLoop::new();
     let window = winit::window::Window::new(&event_loop).unwrap();
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        wgpu_subscriber::initialize_default_subscriber(None);
-        // Temporarily avoid srgb formats for the swapchain on the web
-        futures::executor::block_on(run(event_loop, window, wgpu::TextureFormat::Bgra8UnormSrgb));
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-        console_log::init().expect("could not initialize logger");
-        use winit::platform::web::WindowExtWebSys;
-        // On wasm, append the canvas to the document body
-        web_sys::window()
-            .and_then(|win| win.document())
-            .and_then(|doc| doc.body())
-            .and_then(|body| {
-                body.append_child(&web_sys::Element::from(window.canvas()))
-                    .ok()
-            })
-            .expect("couldn't append canvas to document body");
-        wasm_bindgen_futures::spawn_local(run(event_loop, window, wgpu::TextureFormat::Bgra8Unorm));
-    }
+    wgpu_subscriber::initialize_default_subscriber(None);
+    // Temporarily avoid srgb formats for the swapchain on the web
+    futures::executor::block_on(run(event_loop, window, wgpu::TextureFormat::Bgra8UnormSrgb));
 }
