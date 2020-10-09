@@ -14,4 +14,5 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 bytemuck = { version = "1.4.1", features = ["derive"] }
 log = "0.4"
 rand = "0.7.3"
+cgmath = "0.17.0"
 # cgmath = "0.17"
