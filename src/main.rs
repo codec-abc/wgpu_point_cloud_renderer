@@ -37,14 +37,23 @@ fn get_matrix(aspect_ratio: f64) -> Matrix4<f32> {
     let transformation_matrix = 
         Matrix4::from_translation(translation);
 
-    //OPENGL_TO_WGPU_MATRIX * 
-        Matrix4::<f32>::from_translation(Vector3::<f32>::new(0.0, 0.0, 0.0)) // * projection_matrix * transformation_matrix
+    // OPENGL_TO_WGPU_MATRIX *
+    let mut result = 
+        Matrix4::<f32>::from_translation(
+        Vector3::<f32>::new(0.0, 0.0, 0.0));
+
+    //result = result.transpose();
+
+    result
+
+    //println!("{:?}", result);
+    //OPENGL_TO_WGPU_MATRIX * projection_matrix * transformation_matrix
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Vertex {
-    _pos: [f32; 4],
+    _pos: [f32; 3],
     _color: [f32; 4],
 }
 
@@ -57,13 +66,15 @@ fn alter_buffer(device: &Device, vertex_data: &mut Vec<Vertex>) -> wgpu::Buffer 
     for _i in 0..max {
         let x = rng.gen_range(-1.0, 1.0);
         let y = rng.gen_range(-1.0, 1.0);
+        let z = rng.gen_range(-1.0, 1.0);
 
         let color_1 = rng.gen_range(0.0, 1.0);
         let color_2 = rng.gen_range(0.0, 1.0);
+        let color_3 = rng.gen_range(0.0, 1.0);
 
         vertex_data.push(Vertex {
-            _pos: [x, y, 0.0, 1.0],
-            _color: [1.0, color_1, color_2, 1.0],
+            _pos: [x, y, z],
+            _color: [color_1, color_2, color_3, 1.0],
         });
     }
 
@@ -85,7 +96,7 @@ fn draw(
     vertex_buffer: &Buffer,
     uniform_bind_group: &BindGroup,
     ratio: f64,
-    uniform_buf: &Buffer
+    uniform_buffer: &Buffer
 ) {
     println!("redrawing");
 
@@ -117,17 +128,23 @@ fn draw(
 
         let vertex_count = vertex_data.len() as u32;
 
-        let mx_total = get_matrix(ratio);
-        let mx_ref: &[f32; 16] = mx_total.as_ref();
-
-        queue.write_buffer(
-            &uniform_buf,
-            0,
-            bytemuck::cast_slice(mx_ref),
-        );
-
         render_pass.draw(0..vertex_count, 0..1);
     }
+
+    let mx_total = get_matrix(ratio);
+    let mx_ref: &[f32; 16] = mx_total.as_ref();
+
+    println!("====");
+    println!("{:?}", mx_total);
+    println!("{:?}", mx_ref);
+    println!("====");
+    println!(" ");
+
+    queue.write_buffer(
+        &uniform_buffer,
+        0,
+        bytemuck::cast_slice(mx_ref),
+    );
 
     queue.submit(Some(encoder.finish()));
 }
@@ -163,44 +180,44 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
     let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
 
-    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: None,
+    let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
             wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStage::VERTEX,
                 ty: wgpu::BindingType::UniformBuffer {
                     dynamic: false,
-                    min_binding_size: wgpu::BufferSize::new(64),
+                    min_binding_size: None,
                 },
                 count: None,
             }
         ],
+        label: Some("uniform_bind_group_layout")
     });
 
     let mx_total = get_matrix(1.0);
     let mx_ref: &[f32; 16] = mx_total.as_ref();
     
-    let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
         contents: bytemuck::cast_slice(mx_ref),
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
     });
 
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
+    let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &uniform_bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: BindingResource::Buffer(uniform_buf.slice(..))
+                resource: BindingResource::Buffer(uniform_buffer.slice(..))
             },
         ],
-        label: None,
+        label: Some("uniform_bind_group"),
     });
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
-        bind_group_layouts: &[&bind_group_layout],
+        bind_group_layouts: &[&uniform_bind_group_layout],
         push_constant_ranges: &[],
     });
 
@@ -225,7 +242,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             vertex_buffers: &[wgpu::VertexBufferDescriptor {
                 stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
                 step_mode: wgpu::InputStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float4, 1 => Float4],
+                attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float4],
             }],
         },
         sample_count: 1,
@@ -265,12 +282,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             let (sin, cos) = (percent * 2.0 * std::f32::consts::PI).sin_cos();
 
             vertex_data.push(Vertex {
-                _pos: [0.0, 0.0, 0.0, 1.0],
-                _color: [1.0, -sin, cos, 1.0],
-            });
-
-            vertex_data.push(Vertex {
-                _pos: [1.0 * cos, 1.0 * sin, 0.0, 1.0],
+                _pos: [1.0 * cos, 1.0 * sin, 0.99],
                 _color: [sin, -cos, 1.0, 1.0],
             });
         }
@@ -310,9 +322,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                             &queue,
                             &mut vertex_data,
                             &vertex_buffer,
-                            &bind_group,
+                            &uniform_bind_group,
                             ratio,
-                            &uniform_buf
+                            &uniform_buffer
                         );
                     }
                 }
@@ -329,9 +341,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     &queue,
                     &mut vertex_data,
                     &vertex_buffer,
-                    &bind_group,
+                    &uniform_bind_group,
                     ratio,
-                    &uniform_buf
+                    &uniform_buffer
                 );
             }
 
