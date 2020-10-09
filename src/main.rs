@@ -12,7 +12,7 @@ use rand::Rng;
 
 use bytemuck::{Pod, Zeroable};
 
-use wgpu::{BindGroup, BindingResource, Buffer, BufferAddress, BufferSlice, Device, Queue, RenderPipeline, SwapChain, util::DeviceExt};
+use wgpu::{BindGroup, BindingResource, Buffer, BufferAddress, Device, Queue, RenderPipeline, SwapChain, util::DeviceExt};
 
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f64> = Matrix4::new(
     1.0, 0.0, 0.0, 0.0,
@@ -88,11 +88,11 @@ impl RangeBounds<BufferAddress> for FakeRange {
         (match self.start_bound() {
             std::ops::Bound::Included(ref start) => *start <= item,
             std::ops::Bound::Excluded(ref start) => *start < item,
-            Unbounded => true,
+            std::ops::Bound::Unbounded => true,
         }) && (match self.end_bound() {
             std::ops::Bound::Included(ref end) => item <= *end,
             std::ops::Bound::Excluded(ref end) => item < *end,
-            Unbounded => true,
+            std::ops::Bound::Unbounded => true,
         })
     }
 
@@ -114,6 +114,8 @@ fn draw(
     vertex_data: &mut Vec<Vertex>,
     vertex_buffer: &Buffer,
     bind_group: &BindGroup,
+    ratio: f64,
+    uniform_buf: &Buffer
 ) {
     println!("redrawing");
 
@@ -144,6 +146,11 @@ fn draw(
         render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
 
         let vertex_count = vertex_data.len() as u32;
+
+        let mx_total = get_matrix(ratio);
+        let mx_ref: &[f64; 16] = mx_total.as_ref();
+        queue.write_buffer(&uniform_buf, 0, bytemuck::cast_slice(mx_ref));
+
         render_pass.draw(0..vertex_count, 0..1);
     }
 
@@ -329,6 +336,8 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                             &mut vertex_data,
                             &vertex_buffer,
                             &bind_group,
+                            ratio,
+                            &uniform_buf
                         );
                     }
                 }
@@ -345,7 +354,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     &queue,
                     &mut vertex_data,
                     &vertex_buffer,
-                    &bind_group
+                    &bind_group,
+                    ratio,
+                    &uniform_buf
                 );
             }
 
