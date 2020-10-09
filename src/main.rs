@@ -1,3 +1,5 @@
+use cgmath::*;
+
 use winit::{
     event::{Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -9,6 +11,28 @@ use rand::Rng;
 use bytemuck::{Pod, Zeroable};
 
 use wgpu::{util::DeviceExt, Buffer, Device, Queue, RenderPipeline, SwapChain};
+
+
+fn get_matrix(aspect: f64) -> cgmath::Matrix4<f64> {
+    let translation = Vector3::new(0.0, 0.0, 0.0);
+    let rotation = Quaternion::new(1.0, 0.0, 0.0, 0.0);
+
+    let perspective : PerspectiveFov<f64> = PerspectiveFov::<f64> {
+        fovy: Rad::<f64>::from(Deg::<f64>(90.0)),
+        aspect: aspect,
+        near: 0.01,
+        far: 100.0,
+    };
+
+    let projection_matrix = 
+        Matrix4::<f64>::from(perspective.to_perspective()) *
+        Matrix4::<f64>::from(rotation);
+
+    let transformation_matrix = 
+        Matrix4::from_translation(translation);
+
+    transformation_matrix * projection_matrix
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
